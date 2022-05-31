@@ -13,6 +13,7 @@ import vrep
 import time
 import sys
 import numpy as np
+import os
 
 vrep.simxFinish(-1) # just in case, close all opened connections
 
@@ -29,7 +30,6 @@ vrep.simxSynchronous(clientID, True)
 
 #Inicia a simulação
 vrep.simxStartSimulation(clientID,vrep.simx_opmode_blocking);
-
 
 # Juntas do Robô
 _, J1Handle = vrep.simxGetObjectHandle(clientID,'J1',vrep.simx_opmode_oneshot_wait)
@@ -75,61 +75,42 @@ def main():
     #Controle do tempo de simulação
     t = 0
     
-    #Dimensões dos elos do robô
-    a1 = 0.5
-    a2 = 0.5
-    
     #Loop de controle do robô
     while vrep.simxGetConnectionId(clientID) != -1:
         t0 = time.perf_counter() #Controle de tempo
         t+=dt
       
         # Obtém Pose do Alvo
-        x_a, y_a, z_a, phi_a, theta_a, psi_a = Obter_Pose(AlvoHandle)
+        xd, yd,_,phid,_,_ = Obter_Pose(AlvoHandle)
     
-        x, y, z, phi, theta, psi = Obter_Pose(FrameEHandle)
+        x, y,_,phi,_,_ = Obter_Pose(FrameEHandle)
         
-        #Captura posição angular corrente
+        #Captura posição angular medida
         q1_m = Obter_Angulo_Junta(J1Handle)
         q2_m = Obter_Angulo_Junta(J2Handle)
         
-        #Programa aqui a cinemática inversa
+        #Aplica referências nas juntas
         
-        def cinematica_inv(xd, yd, a1, a2, config):
-          r = np.sqrt(xd**2 + yd**2) 
-          if r >=a1-a2 and r<=a1+a2: 
-            if config == 1:
-              q2 = np.arccos((xd**2+yd**2-a1**2-a2**2)/(2*a1*a2))
-              q1 = np.arctan2(yd,xd) - np.arctan2((a2*np.sin(q2)),(a1+a2*np.cos(q2)))
-            else:
-              q2 = -np.arccos((xd**2+yd**2-a1**2-a2**2)/(2*a1*a2))
-              q1 = np.arctan2(yd,xd) - np.arctan2((a2*np.sin(q2)),(a1+a2*np.cos(q2)))
-           
-            #q1=np.degrees(q1)
-            #q2=np.degrees(q2)
-            
-            q1_r = q1
-            q2_r = q2
-            
-            Setar_Juntas_Robo(q1_r, q2_r)
-            
-            print("\nCinemática inversa resolvida!")
-            print("Solução de q1: %1.2f°" % np.degrees(q1))
-            print("Solução de q2: %1.2f°" % np.degrees(q2))
-          else:
-            print("ERRO!")
-            print("A cinemática inversa NÃO foi resolvida")
-            print("Certifique-se que é possível alcançar (xd, yd)!")
-        cinematica_inv(x_a, y_a, a1, a2, config=1)
+        q1_r = np.arctan2((yd),(xd))
+        q2_r = np.sqrt(xd**2 + yd**2)- (0.5) - (0.25)
         
+        if q2_r >= 0.25:
+            q2_r = 0.25
+        elif q2_r <= (-0.25):
+            q2_r = -0.25
+            
         # Seta referência das juntas
+        Setar_Juntas_Robo(q1_r, q2_r)
         
-        
-        #Print de dados
-        print("\nALVO: (%1.2f, %1.2f, %1.2f)" % (x_a, y_a, z_a))
-        print("ATUADOR: (%1.2f, %1.2f, %1.2f)" % (x, y, z))
-        #print("phi: %1.2f  theta: %1.2f  psi: %1.2f" % (phi*180/np.pi, theta*180/np.pi, psi*180/np.pi))
-            #print("q1: %1.2f  q2: %1.2f" % (q1_m*180/np.pi,q2_m*180/np.pi))
+        #print("\n" * os.get_terminal_size().lines)
+
+        print("\n----- ALVO -----\n")
+        print("(%1.2f, %1.2f)\n\n" % (xd, yd))
+        print("----- ROBÔ -----\n")
+        print("R1 (q1): %1.2f\n" % (np.degrees(q1_m)))
+        print("T1 (q2): %1.2f\n" % (np.degrees(q2_m)))
+        print("(%1.2f, %1.2f)\n\n" % (x, y))
+        #print("q1: %1.2f  q2: %1.2f" % (q1_m*180/np.pi,q2_m))
         
         #Disparo do trigger de simulação
         vrep.simxSynchronousTrigger(clientID); # Trigger next simulation step (Blocking function call)
